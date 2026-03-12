@@ -24,6 +24,12 @@ profile.cov
 go.work
 go.work.sum
 
+# Built binary
+cloudpc
+
+# Runtime config
+cloud_pc.json
+
 # env file
 .env
 
