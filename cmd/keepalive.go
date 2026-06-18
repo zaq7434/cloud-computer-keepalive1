@@ -43,8 +43,22 @@ func Keepalive(args []string) {
 	}
 	logger.Infof("SohoToken: %s", logger.Mask(sohoToken, 4))
 
-	// 1. Get CEM access_token
-	accessToken, err := cem.GetCEMAccessToken(sohoToken, userID)
+	// 1. Get firm auth. Sub-account/ZTE clients may receive CAG/VMC fields
+	// without an SCG auth code, matching the official Windows client flow.
+	firmAuth, err := cem.GetFirmAuth(sohoToken, userID)
+	if err != nil {
+		logger.Errorf("getFirmAuth failed: %v", err)
+		os.Exit(1)
+	}
+	firmAuthCode, _ := firmAuth["scAuthCode"].(string)
+	if firmAuthCode == "" {
+		logger.Info("Firm auth has no scAuthCode; using SOHO heartbeat-only mode")
+		logFirmAuthFallback(firmAuth)
+		sohoHeartbeatOnlyLoop(sohoToken, userID, duration)
+		return
+	}
+
+	accessToken, err := cem.ExchangeCEMAccessToken(firmAuthCode)
 	if err != nil {
 		logger.Errorf("Get CEM access_token failed: %v", err)
 		os.Exit(1)
@@ -222,6 +236,100 @@ func keepaliveLoop(conn net.Conn, sohoToken, userID string, duration int) {
 		}
 
 		time.Sleep(25 * time.Second)
+	}
+}
+
+func sohoHeartbeatOnlyLoop(sohoToken, userID string, duration int) {
+	if duration > 0 {
+		logger.Infof("SOHO heartbeat-only keepalive for %ds...", duration)
+	} else {
+		logger.Info("SOHO heartbeat-only keepalive (Ctrl+C to exit)...")
+	}
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	start := time.Now()
+	heartbeatCount := 0
+
+	for {
+		select {
+		case <-sigCh:
+			logger.Info("User interrupted")
+			return
+		default:
+		}
+
+		elapsed := int(time.Since(start).Seconds())
+		if duration > 0 && elapsed >= duration {
+			logger.Infof("Keepalive %ds done", elapsed)
+			return
+		}
+
+		if err := sendSohoCloudPCAction("/cc/cloudPc/heartbeat/v2", sohoToken, userID); err != nil {
+			logger.Warnf("SOHO heartbeat error: %v", err)
+		} else {
+			heartbeatCount++
+			logger.Infof("SOHO heartbeat #%d (uptime=%ds)", heartbeatCount, elapsed)
+		}
+
+		sleepFor := 25 * time.Second
+		if duration > 0 {
+			remaining := time.Duration(duration)*time.Second - time.Since(start)
+			if remaining <= 0 {
+				continue
+			}
+			if remaining < sleepFor {
+				sleepFor = remaining
+			}
+		}
+
+		timer := time.NewTimer(sleepFor)
+		select {
+		case <-sigCh:
+			timer.Stop()
+			logger.Info("User interrupted")
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+func sendSohoCloudPCAction(path, sohoToken, userID string) error {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return err
+	}
+	if cfg.UserServiceID == "" {
+		return fmt.Errorf("missing user_service_id in config, please run login first")
+	}
+
+	bodyJSON := fmt.Sprintf(`{"userServiceId":"%s"}`, cfg.UserServiceID)
+	bodyData, err := crypto.RSAEncrypt(bodyJSON)
+	if err != nil {
+		return err
+	}
+
+	result, err := soho.SohoRequest(path, bodyData, sohoToken, userID)
+	if err != nil {
+		return err
+	}
+	code, _ := result["code"].(float64)
+	if code != 2000 && code != 4041 {
+		return fmt.Errorf("code=%v, msg=%v", result["code"], result["msg"])
+	}
+	return nil
+}
+
+func logFirmAuthFallback(data map[string]any) {
+	vmc := jsonString(data["vmcIp"])
+	vmcPort := jsonString(data["vmcPort"])
+	cag := jsonString(data["cagIp"])
+	cagPort := jsonString(data["cagPort"])
+	vmID := jsonString(data["vmId"])
+	if vmc != "" || cag != "" {
+		logger.Infof("Firm auth: vmId=%s, vmc=%s:%s, cag=%s:%s",
+			logger.Mask(vmID, 4), vmc, vmcPort, cag, cagPort)
 	}
 }
 

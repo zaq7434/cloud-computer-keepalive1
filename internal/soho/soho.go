@@ -122,8 +122,7 @@ func GetDynamicRSAKey() (*rsa.PublicKey, error) {
 	return crypto.ParseRSAPublicKey(pubKeyB64)
 }
 
-// PasswordLogin performs username+password login. Returns the response data map.
-func PasswordLogin(username, password string) (map[string]any, error) {
+func passwordLogin(path, accountField, account, password string) (map[string]any, error) {
 	dynamicKey, err := GetDynamicRSAKey()
 	if err != nil {
 		return nil, fmt.Errorf("get public key: %w", err)
@@ -134,13 +133,13 @@ func PasswordLogin(username, password string) (map[string]any, error) {
 		return nil, fmt.Errorf("encrypt password: %w", err)
 	}
 
-	loginJSON := fmt.Sprintf(`{"username":"%s","password":"%s","verificationCode":"","randomCode":""}`, username, encryptedPwd)
+	loginJSON := fmt.Sprintf(`{"%s":"%s","password":"%s","verificationCode":"","randomCode":""}`, accountField, account, encryptedPwd)
 	encryptedBody, err := crypto.RSAEncryptChunked(loginJSON)
 	if err != nil {
 		return nil, fmt.Errorf("encrypt body: %w", err)
 	}
 
-	result, err := SohoRequest("/login/namePwdLogin/v1", encryptedBody, "", "")
+	result, err := SohoRequest(path, encryptedBody, "", "")
 	if err != nil {
 		return nil, err
 	}
@@ -150,6 +149,16 @@ func PasswordLogin(username, password string) (map[string]any, error) {
 	}
 	data, _ := result["data"].(map[string]any)
 	return data, nil
+}
+
+// PasswordLogin performs username+password login. Returns the response data map.
+func PasswordLogin(username, password string) (map[string]any, error) {
+	return passwordLogin("/login/namePwdLogin/v1", "username", username, password)
+}
+
+// SubAccountPasswordLogin performs sub-account username+password login.
+func SubAccountPasswordLogin(subAccount, password string) (map[string]any, error) {
+	return passwordLogin("/login/home/namePwdLogin/v1", "subAccount", subAccount, password)
 }
 
 func LoadSohoToken() (string, string) {

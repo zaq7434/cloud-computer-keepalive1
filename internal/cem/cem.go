@@ -15,10 +15,10 @@ import (
 )
 
 type ConnectInfo struct {
-	ScgIP      string
-	ScgPort    string
-	ScAuthCode string
-	TraceID    string
+	ScgIP       string
+	ScgPort     string
+	ScAuthCode  string
+	TraceID     string
 	ReadyStatus float64
 }
 
@@ -69,33 +69,50 @@ func cemRequest(path string, body any, accessToken string) (map[string]any, erro
 }
 
 func GetCEMAccessToken(sohoToken, userID string) (string, error) {
-	cfg, err := config.LoadConfig()
+	data, err := GetFirmAuth(sohoToken, userID)
 	if err != nil {
 		return "", err
 	}
+	scAuthCode, _ := data["scAuthCode"].(string)
+	return ExchangeCEMAccessToken(scAuthCode)
+}
+
+func GetFirmAuth(sohoToken, userID string) (map[string]any, error) {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
 	if cfg.UserServiceID == "" {
-		return "", fmt.Errorf("missing user_service_id in config, please run login first")
+		return nil, fmt.Errorf("missing user_service_id in config, please run login first")
 	}
 
-	logger.Info("Getting CEM access_token...")
+	logger.Info("Getting firm auth...")
 	bodyJSON := fmt.Sprintf(`{"userServiceId":"%s"}`, cfg.UserServiceID)
 	bodyData, err := crypto.RSAEncrypt(bodyJSON)
 	if err != nil {
-		return "", fmt.Errorf("rsa encrypt: %w", err)
+		return nil, fmt.Errorf("rsa encrypt: %w", err)
 	}
 
 	result, err := soho.SohoRequest("/cc/getFirmAuth/v1", bodyData, sohoToken, userID)
 	if err != nil {
-		return "", fmt.Errorf("getFirmAuth: %w", err)
+		return nil, fmt.Errorf("getFirmAuth: %w", err)
 	}
 
 	code, _ := result["code"].(float64)
 	if code != 2000 {
-		return "", fmt.Errorf("getFirmAuth failed: code=%v, msg=%v", result["code"], result["msg"])
+		return nil, fmt.Errorf("getFirmAuth failed: code=%v, msg=%v", result["code"], result["msg"])
 	}
 
 	data, _ := result["data"].(map[string]any)
-	scAuthCode, _ := data["scAuthCode"].(string)
+	return data, nil
+}
+
+func ExchangeCEMAccessToken(scAuthCode string) (string, error) {
+	if scAuthCode == "" {
+		return "", fmt.Errorf("empty scAuthCode in firm auth response")
+	}
+
+	logger.Info("Getting CEM access_token...")
 
 	// oauth/token
 	formData := url.Values{

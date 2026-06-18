@@ -41,8 +41,11 @@ func Login() {
 	fmt.Println("[*] Login method:")
 	fmt.Println("    [1] SMS code")
 	fmt.Println("    [2] Account password")
+	fmt.Println("    [3] Sub account password")
 	defaultMethod := "1"
-	if cfg.Username != "" {
+	if cfg.LoginMode == "sub_password" || cfg.SubAccount != "" {
+		defaultMethod = "3"
+	} else if cfg.Username != "" {
 		defaultMethod = "2"
 	}
 	fmt.Printf("[?] Choose [%s]: ", defaultMethod)
@@ -56,16 +59,20 @@ func Login() {
 	switch method {
 	case "1":
 		data = loginSMS(scanner, cfg)
+		cfg.LoginMode = "sms"
 	case "2":
 		data = loginPassword(scanner, cfg)
+		cfg.LoginMode = "password"
+	case "3":
+		data = loginSubPassword(scanner, cfg)
+		cfg.LoginMode = "sub_password"
 	default:
 		fmt.Printf("[-] Invalid choice: %s\n", method)
 		os.Exit(1)
 	}
 
 	cfg.SohoToken, _ = data["sohoToken"].(string)
-	userIDFloat, _ := data["userId"].(float64)
-	cfg.UserID = fmt.Sprintf("%.0f", userIDFloat)
+	cfg.UserID = jsonString(data["userId"])
 	fmt.Printf("[+] Login success! UserId: %s\n", logger.Mask(cfg.UserID, 4))
 
 	// 3. Get cloud PC info
@@ -209,6 +216,59 @@ func loginPassword(scanner *bufio.Scanner, cfg *config.Config) map[string]any {
 	return data
 }
 
+func loginSubPassword(scanner *bufio.Scanner, cfg *config.Config) map[string]any {
+	subAccount := cfg.SubAccount
+	if subAccount != "" {
+		fmt.Printf("[?] Sub account [%s]: ", logger.Mask(subAccount, 4))
+		scanner.Scan()
+		inp := strings.TrimSpace(scanner.Text())
+		if inp != "" {
+			subAccount = inp
+		}
+	} else {
+		fmt.Print("[?] Sub account: ")
+		scanner.Scan()
+		subAccount = strings.TrimSpace(scanner.Text())
+	}
+	if subAccount == "" {
+		fmt.Println("[-] Sub account cannot be empty")
+		os.Exit(1)
+	}
+
+	password := cfg.SubPassword
+	if password != "" {
+		fmt.Print("[?] Sub account password [****]: ")
+		scanner.Scan()
+		inp := strings.TrimSpace(scanner.Text())
+		if inp != "" {
+			password = inp
+		}
+	} else {
+		fmt.Print("[?] Sub account password: ")
+		scanner.Scan()
+		password = strings.TrimSpace(scanner.Text())
+	}
+	if password == "" {
+		fmt.Println("[-] Sub account password cannot be empty")
+		os.Exit(1)
+	}
+
+	fmt.Printf("[*] Logging in as sub account %s...\n", logger.Mask(subAccount, 4))
+	data, err := soho.SubAccountPasswordLogin(subAccount, password)
+	if err != nil {
+		fmt.Printf("[-] Login failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	cfg.SubAccount = subAccount
+	cfg.SubPassword = password
+	if phone, _ := data["mainAccountPhone"].(string); phone != "" {
+		cfg.Phone = phone
+	}
+
+	return data
+}
+
 func fetchCloudPC(scanner *bufio.Scanner, cfg *config.Config) {
 	fmt.Println("[*] Getting cloud PC list...")
 	listJSON := `{"pageNum":1,"pageSize":100}`
@@ -288,4 +348,17 @@ func fetchCloudPC(scanner *bufio.Scanner, cfg *config.Config) {
 
 	data, _ = result["data"].(map[string]any)
 	cfg.VMID, _ = data["vmId"].(string)
+}
+
+func jsonString(v any) string {
+	switch value := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return value
+	case float64:
+		return fmt.Sprintf("%.0f", value)
+	default:
+		return fmt.Sprintf("%v", value)
+	}
 }

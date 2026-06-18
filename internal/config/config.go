@@ -47,6 +47,9 @@ type Config struct {
 	Phone         string `json:"phone,omitempty"`
 	Username      string `json:"username,omitempty"`
 	Password      string `json:"password,omitempty"`
+	SubAccount    string `json:"sub_account,omitempty"`
+	SubPassword   string `json:"sub_password,omitempty"`
+	LoginMode     string `json:"login_mode,omitempty"`
 	SohoToken     string `json:"soho_token,omitempty"`
 	UserID        string `json:"user_id,omitempty"`
 	UserServiceID string `json:"user_service_id,omitempty"`
