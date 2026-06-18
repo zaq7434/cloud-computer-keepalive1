@@ -52,10 +52,9 @@ func Keepalive(args []string) {
 	}
 	firmAuthCode, _ := firmAuth["scAuthCode"].(string)
 	if firmAuthCode == "" {
-		logger.Info("Firm auth has no scAuthCode; using SOHO heartbeat-only mode")
 		logFirmAuthFallback(firmAuth)
-		sohoHeartbeatOnlyLoop(sohoToken, userID, duration)
-		return
+		logger.Error("Firm auth has no scAuthCode; this account uses the ZTE CAG/VMC client path, which is not supported by the SCG keepalive implementation")
+		os.Exit(1)
 	}
 
 	accessToken, err := cem.ExchangeCEMAccessToken(firmAuthCode)
@@ -236,62 +235,6 @@ func keepaliveLoop(conn net.Conn, sohoToken, userID string, duration int) {
 		}
 
 		time.Sleep(25 * time.Second)
-	}
-}
-
-func sohoHeartbeatOnlyLoop(sohoToken, userID string, duration int) {
-	if duration > 0 {
-		logger.Infof("SOHO heartbeat-only keepalive for %ds...", duration)
-	} else {
-		logger.Info("SOHO heartbeat-only keepalive (Ctrl+C to exit)...")
-	}
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	start := time.Now()
-	heartbeatCount := 0
-
-	for {
-		select {
-		case <-sigCh:
-			logger.Info("User interrupted")
-			return
-		default:
-		}
-
-		elapsed := int(time.Since(start).Seconds())
-		if duration > 0 && elapsed >= duration {
-			logger.Infof("Keepalive %ds done", elapsed)
-			return
-		}
-
-		if err := sendSohoCloudPCAction("/cc/cloudPc/heartbeat/v2", sohoToken, userID); err != nil {
-			logger.Warnf("SOHO heartbeat error: %v", err)
-		} else {
-			heartbeatCount++
-			logger.Infof("SOHO heartbeat #%d (uptime=%ds)", heartbeatCount, elapsed)
-		}
-
-		sleepFor := 25 * time.Second
-		if duration > 0 {
-			remaining := time.Duration(duration)*time.Second - time.Since(start)
-			if remaining <= 0 {
-				continue
-			}
-			if remaining < sleepFor {
-				sleepFor = remaining
-			}
-		}
-
-		timer := time.NewTimer(sleepFor)
-		select {
-		case <-sigCh:
-			timer.Stop()
-			logger.Info("User interrupted")
-			return
-		case <-timer.C:
-		}
 	}
 }
 
