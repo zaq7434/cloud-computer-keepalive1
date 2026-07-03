@@ -16,11 +16,10 @@ jobs:
     strategy:
       matrix:
         include:
-          # 配置 Windows 目标
           - os: windows
             arch: amd64
             output_name: cloudpc-windows-amd64.exe
-          # 可以方便地在这里扩展其他平台，例如 Linux 或 macOS
+          # 可以在这里扩展其他平台
           # - os: linux
           #   arch: amd64
           #   output_name: myapp-linux-amd64
@@ -32,18 +31,48 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24.0' # 建议使用你需要的 Go 版本
+          go-version: '1.24.0'
 
       - name: Build binary
         run: |
-          # 核心：通过环境变量指定目标操作系统和架构
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
           go build -ldflags="-s -w" -o dist/${{ matrix.output_name }} .
-        # 如果你的主包不在根目录，请将命令最后的 "." 替换为对应的路径，例如 "./cmd/myapp"
 
-      - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          files: dist/*
+          name: ${{ matrix.output_name }}
+          path: dist/${{ matrix.output_name }}
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Generate timestamp tag
+        id: tag
+        run: |
+          TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+          echo "tag=release-$TIMESTAMP" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Release ${{ steps.tag.outputs.tag }}
+          files: dist/*/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
