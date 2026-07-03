@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # 配置 Windows 目标
+          - os: windows
+            arch: amd64
+            output_name: cloudpc-windows-amd64.exe
+          # 可以方便地在这里扩展其他平台，例如 Linux 或 macOS
+          # - os: linux
+          #   arch: amd64
+          #   output_name: myapp-linux-amd64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.0' # 建议使用你需要的 Go 版本
+
+      - name: Build binary
+        run: |
+          # 核心：通过环境变量指定目标操作系统和架构
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
+          go build -ldflags="-s -w" -o dist/${{ matrix.output_name }} .
+        # 如果你的主包不在根目录，请将命令最后的 "." 替换为对应的路径，例如 "./cmd/myapp"
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
