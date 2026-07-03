@@ -26,12 +26,24 @@ go.work.sum
 
 # Built binary
 cloudpc
+dist/
 
 # Runtime config
 cloud_pc.json
 
 # env file
 .env
+
+# Local reverse-engineering/probe artifacts
+.cache/
+.tools/
+.pydeps/
+native_probe/
+native_probe/sdk_zte/
+native_probe/appdata/
+native_probe/tmp/
+native_probe/firm_auth_private.json
+native_probe/captures/
 
 # Editor/IDE
 # .idea/
