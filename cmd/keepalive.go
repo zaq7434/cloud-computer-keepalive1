@@ -175,7 +175,7 @@ func keepaliveZTESession(firmAuth map[string]any, sohoToken, userID string, dura
 	if connectStr == "" {
 		return fmt.Errorf("ZTE startDesktop did not return connectStr")
 	}
-
+	logger.Infof("Connecting ZTE connectStr %s...", connectStr)
 	params, err := zte.DecodeConnectParams(connectStr)
 	if err != nil {
 		return err
