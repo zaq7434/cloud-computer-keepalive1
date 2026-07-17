@@ -48,7 +48,7 @@ func ParseConnectParams(raw string) (*ConnectParams, error) {
 		}
 		args[key] = value
 	}
-
+	logger.Infof("connectStr args: %v", args)
 	params := &ConnectParams{
 		Raw:         raw,
 		Args:        args,
