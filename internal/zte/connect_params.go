@@ -27,6 +27,13 @@ func DecodeConnectParams(connectStr string) (*ConnectParams, error) {
 	return ParseConnectParams(plain)
 }
 
+func getHost(args map[string]string) string {
+    if host, ok := args["-h"]; ok && host != "" {
+        return host
+    }
+    return args["--hv6"]
+}
+
 func ParseConnectParams(raw string) (*ConnectParams, error) {
 	tokens, err := splitCommandLine(raw)
 	if err != nil {
@@ -52,7 +59,7 @@ func ParseConnectParams(raw string) (*ConnectParams, error) {
 	params := &ConnectParams{
 		Raw:         raw,
 		Args:        args,
-		Host:        args["-h"],
+		Host:        getHost(args),
 		Key:         args["-k"],
 		VMID:        args["--vmid"],
 		AccessToken: args["--accessToken"],
