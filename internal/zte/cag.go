@@ -168,9 +168,9 @@ func buildCAGAuthBlob(params *ConnectParams, template []byte) ([]byte, error) {
 		return nil, fmt.Errorf("invalid CAG auth template length %d", len(template))
 	}
 
-	ip := net.ParseIP(params.Host).To4()
-	if ip == nil {
-		return nil, fmt.Errorf("CAG auth blob requires IPv4 host: %s", params.Host)
+	parsedIP := net.ParseIP(params.Host)
+	if parsedIP == nil {
+	    return nil, fmt.Errorf("CAG auth blob invalid host: %s", params.Host)
 	}
 	if params.ProxySport <= 0 {
 		return nil, fmt.Errorf("CAG auth blob requires proxySport")
@@ -181,7 +181,12 @@ func buildCAGAuthBlob(params *ConnectParams, template []byte) ([]byte, error) {
 
 	blob := make([]byte, 220)
 	binary.LittleEndian.PutUint32(blob[0:4], uint32(params.ProxySport))
-	copy(blob[4:8], ip)
+	v4 := parsedIP.To4()
+	if v4 != nil {
+	    copy(blob[4:8], v4)                 // IPv4: 4字节, 原样
+	} else {
+	    copy(blob[4:20], parsedIP.To16())   // IPv6: 16字节, 利用[8:20]空闲区
+	}
 	copy(blob[20:56], []byte(params.VMID))
 	fillRandom(blob[60:188])
 	blob[188] = 0x50
